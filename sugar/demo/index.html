@@ -10,20 +10,19 @@ html,body{margin:0;user-select:none;-webkit-user-select:none;-webkit-tap-highlig
 #wrap{position:fixed;inset:0;display:grid;place-items:center}
 #stage{position:fixed;inset:0;overflow:hidden;background:#2a1650}
 #stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
-#ui{position:absolute;inset:0;pointer-events:none;font-size:clamp(11px,calc(min(100vw,177.78vh)/80),26px)}
-.box{position:absolute;bottom:3%;padding:.45em .9em;border-radius:.8em;background:rgba(58,20,110,.6);text-shadow:0 .1em .3em rgba(60,10,90,.8)}
+#ui{position:absolute;inset:0;pointer-events:none;font-size:16px}
+#ui>*{position:absolute;left:0;top:0;white-space:nowrap}
+.box{padding:.45em .9em;border-radius:.8em;background:rgba(58,20,110,.6);text-shadow:0 .1em .3em rgba(60,10,90,.8)}
 .box small{display:block;font-weight:800;letter-spacing:.06em;color:#ff7ad1;font-size:.8em}
 .box b{font-size:1.5em;font-variant-numeric:tabular-nums}
-#bal{left:2.5%}#betb{right:9%;text-align:right}
-#spin{pointer-events:auto;position:absolute;right:2.2%;bottom:16%;width:9.5%;aspect-ratio:1;border-radius:50%;border:.25em solid #fff;background:radial-gradient(circle at 35% 30%,#ff8bd8,#d81b8a 70%);color:#fff;font:inherit;font-size:1.25em;font-weight:900;letter-spacing:.04em;cursor:pointer;box-shadow:0 .4em 1.2em rgba(80,0,90,.55)}
+#betb{text-align:right}
+#spin{pointer-events:auto;border-radius:50%;border:.25em solid #fff;background:radial-gradient(circle at 35% 30%,#ff8bd8,#d81b8a 70%);color:#fff;font:inherit;font-weight:900;letter-spacing:.04em;cursor:pointer;box-shadow:0 .4em 1.2em rgba(80,0,90,.55);padding:0}
 #spin:disabled{filter:grayscale(.6) brightness(.8);cursor:default}
 #spin:focus-visible{outline:.2em solid #ffe36b;outline-offset:.2em}
-#win{padding:.15em .7em;border-radius:.6em;background:rgba(58,20,110,.6);position:absolute;left:50%;bottom:1.5%;transform:translateX(-50%);font-size:1.7em;font-weight:900;color:#ffe36b;text-shadow:0 .08em 0 #c2185b,0 .2em .5em rgba(60,10,90,.9);opacity:0;transition:opacity .2s;white-space:nowrap}
-#mute{pointer-events:auto;position:absolute;right:2.5%;top:3%;width:2.8em;height:2.8em;min-width:44px;min-height:44px;border-radius:50%;border:.14em solid #fff;background:rgba(58,20,110,.6);color:#fff;font:inherit;font-size:1.1em;cursor:pointer}
+#win{padding:.15em .7em;border-radius:.6em;background:rgba(58,20,110,.6);font-size:1.7em;font-weight:900;color:#ffe36b;text-shadow:0 .08em 0 #c2185b,0 .2em .5em rgba(60,10,90,.9);opacity:0;transition:opacity .2s}
+#mute{pointer-events:auto;width:2.8em;height:2.8em;border-radius:50%;border:.14em solid #fff;background:rgba(58,20,110,.6);color:#fff;font:inherit;font-size:1.1em;cursor:pointer;padding:0}
 #mute[aria-pressed=true]{opacity:.45;text-decoration:line-through}
 #msg{position:absolute;inset:0;display:grid;place-items:center;font-size:1.4em;text-align:center;padding:1em;background:#2a1650}
-#spin{width:auto;height:min(17vh,9.5vw);min-height:64px}
-@media (max-aspect-ratio:1/1){#ui{font-size:clamp(12px,3.6vw,22px)}#spin{right:auto;left:50%;transform:translateX(-50%);bottom:3.5%;height:min(22vw,13vh)}#win{bottom:calc(5% + min(22vw,13vh))}#bal{left:4%;bottom:4%}#betb{right:4%;bottom:4%}}
 </style>
 </head>
 <body>
@@ -65,6 +64,7 @@ function sfx(name, rate = 1, vol = 1) {
   if (!actx || muted || !buf[name]) return; const now = actx.currentTime; if (now - (lastPlay[name] || -1) < .028) return; lastPlay[name] = now;
   const s = actx.createBufferSource(), g = actx.createGain(); s.buffer = buf[name]; s.playbackRate.value = rate; g.gain.value = vol; s.connect(g).connect(actx.destination); s.start();
 }
+let layoutKey = '';
 let canvas, R, data = {}, bg, frame, logo, grid = [], dying = [], balance = 1000, busy = true, turbo = 1;
 
 let active = null;                       // demo: every spin plays with 6 of the 10 sweets, so clusters (and the animations) show up often
@@ -90,7 +90,7 @@ const app = {
     const load = (n, atlas) => { const j = new spine.SkeletonJson(new spine.AtlasAttachmentLoader(am.require('assets/' + atlas + '.atlas.txt'))); data[n] = j.readSkeletonData(am.require('assets/' + n + '.json')); };
     for (const n of ALL) load('sugar_' + n, 'symbols');
     for (const n of ['logo', 'frame', 'background']) load('sugar_' + n, 'sugar_' + n);
-    bg = single('sugar_background', W / 2, H / 2, 0.5); bg.st.setAnimation(0, 'idle', true);
+    bg = single('sugar_background', W / 2, H / 2, 0.5); bg.st.setAnimation(0, 'idle_static', true);
     frame = single('sugar_frame', W / 2, FRAME_CY, FRAME_SCALE); frame.st.setAnimation(0, 'idle', true);
     logo = single('sugar_logo', 262, H - 250, 0.5); logo.st.setAnimation(0, 'in', false); logo.st.addAnimation(0, 'idle', true, 0);
     for (let c2 = 0; c2 < N; c2++) grid.push(new Array(N).fill(null));
@@ -116,12 +116,29 @@ const app = {
   render(c) {
     const gl = c.gl, cam = R.camera; R.resize(spine.ResizeMode.Expand);
     // the board (about 1000 x 1080 world units around the centre) always fits; wider screens see more of the scene, tall ones more sky and ground
-    const asp = canvas.width / canvas.height, VH = Math.max(H, 1000 / asp), VW = VH * asp;
+    // Responsive: the whole game is always visible, whatever the window shape.
+    //  wide window  -> side layout: logo left, board centre, button right (the full 1920 x 1080 scene, more of it when wider/taller)
+    //  narrower     -> stacked layout: logo above the board, controls below it
+    const asp = canvas.width / canvas.height, stacked = asp < 1.2;
+    const VW = stacked ? Math.max(1600, 1060 / asp) * asp : Math.max(1920, 1080 * asp), VH = VW / asp;
     cam.position.x = W / 2; cam.position.y = H / 2; cam.viewportWidth = VW; cam.viewportHeight = VH; cam.zoom = 1; cam.update();
-    const bs = Math.max(VW / 3840, VH / 2160); bg.sk.scaleX = bg.sk.scaleY = bs;
-    if (VW >= 1700) { logo.sk.scaleX = logo.sk.scaleY = .5; logo.sk.x = W / 2 - VW / 2 + VW * .137; logo.sk.y = H - 250; }
-    else if (VH >= 1500) { logo.sk.scaleX = logo.sk.scaleY = .46; logo.sk.x = W / 2; logo.sk.y = Math.min(H / 2 + VH / 2 - 190, H + 170); }
-    else { logo.sk.scaleX = logo.sk.scaleY = .27; logo.sk.x = W / 2 - VW / 2 + 135; logo.sk.y = H / 2 + VH / 2 - 115; }
+    bg.sk.scaleX = bg.sk.scaleY = Math.max(VW / 3840, VH / 2160);
+    const L = W / 2 - VW / 2, B = H / 2 - VH / 2, free = (VH - H) / 2;          // left / bottom edge of the view in world units; spare room above and below the board
+    if (stacked) { const ls = Math.min(.5, (free - 10) / 830, VW / 1000); logo.sk.scaleX = logo.sk.scaleY = ls; logo.sk.x = W / 2; logo.sk.y = H + free / 2 - 15; }
+    else { logo.sk.scaleX = logo.sk.scaleY = .5; logo.sk.x = L + 262; logo.sk.y = H - 250; }
+    const key = canvas.width + 'x' + canvas.height;
+    if (key !== layoutKey) {
+      layoutKey = key; const k = canvas.clientWidth / VW, ui = $('ui'); ui.style.fontSize = Math.max(9, 23 * k * (stacked ? 1.25 : 1)) + 'px';
+      const put = (id, x, y, ax, ay) => { $(id).style.transform = `translate(${(x - L) * k}px, ${(H / 2 + VH / 2 - y) * k}px) translate(${-ax * 100}%, ${-ay * 100}%)`; };
+      const size = (id, d) => { $(id).style.width = $(id).style.height = d * k + 'px'; };
+      if (stacked) {
+        const d = Math.min(250, free * .6); size('spin', d); $('spin').style.fontSize = d * k * .2 + 'px';
+        put('spin', W / 2, -free * .47, .5, .5); put('bal', L + 40, B + 30, 0, 1); put('betb', L + VW - 40, B + 30, 1, 1); put('win', W / 2, -8, .5, 0); put('mute', L + VW - 40, B + VH - 40, 1, 0);
+      } else {
+        size('spin', 230); $('spin').style.fontSize = 230 * k * .2 + 'px';
+        put('spin', L + VW - 190, 345, .5, .5); put('bal', L + 50, B + 40, 0, 1); put('betb', L + VW - 50, B + 40, 1, 1); put('win', W / 2, B + 12, .5, 1); put('mute', L + VW - 50, B + VH - 50, 1, 0);
+      }
+    }
     c.clear(.16, .09, .31, 1);
     R.begin();
     R.drawSkeleton(bg.sk, true);
@@ -130,7 +147,7 @@ const app = {
     for (let cc = 0; cc < N; cc++) for (let r = 0; r < N; r++) R.rect(true, cellX(cc) - CELL / 2 + 5, cellY(r) - CELL / 2 + 5, CELL - 10, CELL - 10, new spine.Color(.55, .40, .95, .28));
     R.end();
     // symbols: clipped to the board while they fall in from above
-    const sy = canvas.height / VH, wy = y => (y - (H / 2 - VH / 2)) * sy;
+    const sy = canvas.height / VH, wy = y => (y - B) * sy;
     const list = []; for (const col of grid) for (const o of col) if (o) list.push(o); for (const o of dying) list.push(o);
     list.sort((a, b) => a.front - b.front || b.y - a.y);
     const y0 = Math.round(wy(by + 6)), y1 = Math.round(wy(H - GTOP + 16));
@@ -147,11 +164,12 @@ const app = {
 function drop(o, c, r, fromRow, delay) {
   return new Promise(res => { o.x = cellX(c); o.ty = cellY(r); o.y = cellY(fromRow); o.landAnim = true; o.clip = true; o.onLand = () => { o.clip = false; res(); }; later(() => { o.falling = true; }, delay ); });
 }
-// The X blocks never move and never break: they shape the play field into a heart (same layout every round).
+// Every round starts with the same X blocks: they shape the play field into a heart. They never fall; a win next to one or a bomb breaks it,
+// which opens its cell for the rest of the round. The next spin puts all of them back.
 const MASK = ['X..X..X', '.......', '.......', '.......', 'X.....X', 'XX...XX', 'XXX.XXX'];
-const blocked = (c, r) => MASK[r][c] === 'X';
-function placeBlockers() {
-  for (let c = 0; c < N; c++) for (let r = 0; r < N; r++) if (blocked(c, r)) { const o = make('blocker'); play(o, 'idle', true); o.st.getCurrent(0).trackTime = Math.random() * 3; o.x = cellX(c); o.y = o.ty = cellY(r); o.front = .5; grid[c][r] = o; }
+const blocked = (c, r) => !!grid[c][r] && grid[c][r].name === 'blocker';
+function placeBlockers(back) {
+  for (let c = 0; c < N; c++) for (let r = 0; r < N; r++) if (MASK[r][c] === 'X' && !blocked(c, r)) { const o = make('blocker'); if (back) play(o, 'land', false, 'idle'); else { play(o, 'idle', true); o.st.getCurrent(0).trackTime = Math.random() * 3; } o.x = cellX(c); o.y = o.ty = cellY(r); o.front = .5; grid[c][r] = o; }
 }
 async function fill() {
   const ps = [];
@@ -201,14 +219,17 @@ async function resolve() {
       for (const [c, r] of cells.values()) { const o = grid[c][r]; o.front = 1; play(o, 'win', true); }
       if (cells.size >= 8 || mult >= 2) { frame.st.setAnimation(0, 'win', false); frame.st.addAnimation(0, 'idle', true, 0); logo.st.setAnimation(0, 'win', false); logo.st.addAnimation(0, 'idle', true, 0); }
       sfx('win_' + Math.min(4, mult)); showWin(total, false); await sleep(1000);
-      sfx('destroy'); await removeCells([...cells.values()], 'destroy'); await fill(); continue;
+      // X blocks touching the winning sweets break with them
+      const kill = new Map(cells); let boxes = 0;
+      for (const [c, r] of cells.values()) for (const [da, db] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const x = c + da, y = r + db; if (x >= 0 && y >= 0 && x < N && y < N && blocked(x, y) && !kill.has(x * 10 + y)) { kill.set(x * 10 + y, [x, y]); boxes++; } }
+      sfx('destroy'); if (boxes) sfx('blocker_hit', 1, .8); await removeCells([...kill.values()], 'destroy'); await fill(); continue;
     }
     // no cluster: a bomb on the board goes off and clears its 3 x 3 neighbourhood
     let bomb = null; for (let c = 0; c < N && !bomb; c++) for (let r = 0; r < N; r++) if (grid[c][r] && grid[c][r].name === 'bomb') { bomb = [c, r]; break; }
     if (bomb) {
       const [bc, br] = bomb, b = grid[bc][br]; grid[bc][br] = null; b.front = 3; dying.push(b); const d = play(b, 'explode', false); sfx('bomb_explode');
       await sleep(620 );                                                             // the blast itself starts ~0.65 s in
-      const cells = []; for (let c = bc - 1; c <= bc + 1; c++) for (let r = br - 1; r <= br + 1; r++) if (c >= 0 && r >= 0 && c < N && r < N && grid[c][r] && grid[c][r].name !== 'bomb') { if (grid[c][r].name === 'blocker') play(grid[c][r], 'hit', false, 'idle'); else cells.push([c, r]); }
+      const cells = []; for (let c = bc - 1; c <= bc + 1; c++) for (let r = br - 1; r <= br + 1; r++) if (c >= 0 && r >= 0 && c < N && r < N && grid[c][r] && grid[c][r].name !== 'bomb' && grid[c][r].name !== 'wild') cells.push([c, r]);      // wilds survive the blast, other bombs go off next
       frame.st.setAnimation(0, 'win', false); frame.st.addAnimation(0, 'idle', true, 0);
       sfx('blocker_hit', 1, .7); const keep = dying.slice(); for (const [c, r] of cells) { const o = grid[c][r]; grid[c][r] = null; o.front = 2; play(o, 'destroy', false); keep.push(o); }
       dying = keep; await sleep(Math.max(d * 1000 - 620, 720)); dying = [];
@@ -226,7 +247,7 @@ async function spin() {
   // the old board drops out through the bottom
   const out = []; for (let c = 0; c < N; c++) { for (let r = 0; r < N; r++) { const o = grid[c][r]; if (!o || o.name === 'blocker') continue; grid[c][r] = null; o.ty = -400; o.landAnim = false; o.onLand = null; o.clip = true; out.push(o); later(() => { o.falling = true; }, (c * 40 + (N - 1 - r) * 12) ); } }
   dying = out; await sleep(760); dying = [];
-  newSet();
+  newSet(); placeBlockers(true);
   await fill(); await resolve();
 }
 
