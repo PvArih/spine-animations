@@ -65,12 +65,12 @@ const app = {
   loadAssets(c) {
     const am = c.assetManager;
     for (const n of ALL) am.loadJson('assets/sugar_' + n + '.json');
-    for (const n of ['logo', 'frame', 'background']) { am.loadJson('assets/sugar_' + n + '.json'); am.loadTextureAtlas('assets/sugar_' + n + '.atlas'); }
-    am.loadTextureAtlas('assets/symbols.atlas');
+    for (const n of ['logo', 'frame', 'background']) { am.loadJson('assets/sugar_' + n + '.json'); am.loadTextureAtlas('assets/sugar_' + n + '.atlas.txt'); }
+    am.loadTextureAtlas('assets/symbols.atlas.txt');
   },
   initialize(c) {
     R = c.renderer; const am = c.assetManager;
-    const load = (n, atlas) => { const j = new spine.SkeletonJson(new spine.AtlasAttachmentLoader(am.require('assets/' + atlas + '.atlas'))); data[n] = j.readSkeletonData(am.require('assets/' + n + '.json')); };
+    const load = (n, atlas) => { const j = new spine.SkeletonJson(new spine.AtlasAttachmentLoader(am.require('assets/' + atlas + '.atlas.txt'))); data[n] = j.readSkeletonData(am.require('assets/' + n + '.json')); };
     for (const n of ALL) load('sugar_' + n, 'symbols');
     for (const n of ['logo', 'frame', 'background']) load('sugar_' + n, 'sugar_' + n);
     bg = single('sugar_background', W / 2, H / 2, 0.5); bg.st.setAnimation(0, 'idle', true);
