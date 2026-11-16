@@ -1,0 +1,10 @@
+sugar_background.png
+size:4096,2048
+filter:Linear,Linear
+pma:true
+fx_soft
+bounds:1929,3,128,128
+fx_sparkle
+bounds:2063,3,64,64
+sugar_background_art
+bounds:3,3,1920,1080

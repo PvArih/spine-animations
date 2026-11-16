@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sugar Thumble demo</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#1a0f2e;color:#fff;font:16px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;overflow:hidden}
+#wrap{position:fixed;inset:0;display:grid;place-items:center}
+#stage{position:relative;aspect-ratio:16/9;width:min(100vw,177.78vh);max-height:100vh;overflow:hidden;background:#2a1650}
+#stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#ui{position:absolute;inset:0;pointer-events:none;font-size:calc(min(100vw,177.78vh)/80)}
+.box{position:absolute;bottom:3%;text-shadow:0 .1em .3em rgba(60,10,90,.8)}
+.box small{display:block;font-weight:800;letter-spacing:.06em;color:#ff7ad1;font-size:.8em}
+.box b{font-size:1.5em;font-variant-numeric:tabular-nums}
+#bal{left:2.5%}#betb{right:9%;text-align:right}
+#spin{pointer-events:auto;position:absolute;right:2.2%;bottom:16%;width:9.5%;aspect-ratio:1;border-radius:50%;border:.25em solid #fff;background:radial-gradient(circle at 35% 30%,#ff8bd8,#d81b8a 70%);color:#fff;font:inherit;font-size:1.25em;font-weight:900;letter-spacing:.04em;cursor:pointer;box-shadow:0 .4em 1.2em rgba(80,0,90,.55)}
+#spin:disabled{filter:grayscale(.6) brightness(.8);cursor:default}
+#spin:focus-visible{outline:.2em solid #ffe36b;outline-offset:.2em}
+#win{position:absolute;left:50%;bottom:1.5%;transform:translateX(-50%);font-size:1.7em;font-weight:900;color:#ffe36b;text-shadow:0 .08em 0 #c2185b,0 .2em .5em rgba(60,10,90,.9);opacity:0;transition:opacity .2s;white-space:nowrap}
+#msg{position:absolute;inset:0;display:grid;place-items:center;font-size:1.4em;text-align:center;padding:1em;background:#2a1650}
+#hint{position:absolute;left:2.5%;top:2.5%;font-size:.75em;opacity:.7;display:none}
+</style>
+</head>
+<body>
+<div id="wrap"><div id="stage">
+  <canvas id="c"></canvas>
+  <div id="ui">
+    <div class="box" id="bal"><small>BALANCE</small><b id="balv">$1,000.00</b></div>
+    <div class="box" id="betb"><small>BET</small><b>$1.00</b></div>
+    <div id="win"></div>
+    <button id="spin" disabled aria-label="Spin">SPIN</button>
+  </div>
+  <div id="msg">Ładowanie…</div>
+</div></div>
+<script src="spine-player.min.js"></script>
+<script>
+{
+const $ = id => document.getElementById(id);
+const W = 1920, H = 1080, N = 7, CELL = 106, GX = W / 2 - N * CELL / 2, GTOP = 224;      // world: 1920 x 1080, y up; GTOP = distance of the grid from the top
+const SYM_SCALE = CELL / 1024 * 1.02, FRAME_SCALE = 0.487, FRAME_CY = H - 553;
+const PAY = ['berry_jelly', 'rainbow_jelly', 'snake_jelly', 'orange_jelly', 'green_jelly', 'chocolate_cake', 'chocolate', 'cookie', 'candy_stick', 'square_candy'];
+const WEIGHT = { berry_jelly: 6, rainbow_jelly: 7, snake_jelly: 8, orange_jelly: 12, green_jelly: 10, chocolate_cake: 10, chocolate: 9, cookie: 10, candy_stick: 11, square_candy: 10, wild: 2.2, bomb: 1.1 };
+const VALUE = { berry_jelly: 1.0, rainbow_jelly: .8, snake_jelly: .7, orange_jelly: .3, green_jelly: .35, chocolate_cake: .4, chocolate: .5, cookie: .35, candy_stick: .3, square_candy: .3 };
+const ALL = [...PAY, 'wild', 'bomb', 'blocker'];
+const MIN_CLUSTER = 5;
+// all waits run on game time (advanced in update), so logic and animation can never drift apart on a slow device
+const timers = []; const later = (f, ms) => timers.push({ t: ms / 1000, f }); const sleep = ms => new Promise(r => later(r, ms));
+const cellX = c => GX + c * CELL + CELL / 2, cellY = r => H - GTOP - r * CELL - CELL / 2;
+
+let canvas, R, data = {}, bg, frame, logo, grid = [], dying = [], balance = 1000, busy = true, turbo = 1;
+
+let active = null;                       // demo: every spin plays with 6 of the 10 sweets, so clusters (and the animations) show up often
+function newSet() { const p = PAY.slice().sort(() => Math.random() - .5).slice(0, 6); active = {}; for (const k of p) active[k] = WEIGHT[k]; active.wild = WEIGHT.wild; active.bomb = WEIGHT.bomb; }
+function pick() { if (!active) newSet(); let t = 0; for (const k in active) t += active[k]; let r = Math.random() * t; for (const k in active) { r -= active[k]; if (r <= 0) return k; } return 'cookie'; }
+function make(name) {
+  const d = data['sugar_' + name]; const sk = new spine.Skeleton(d); const st = new spine.AnimationState(new spine.AnimationStateData(d));
+  sk.scaleX = sk.scaleY = SYM_SCALE; return { name, sk, st, x: 0, y: 0, vy: 0, ty: 0, falling: false, front: 0 };
+}
+function play(o, anim, loop, then) { const e = o.st.setAnimation(0, anim, loop); if (then) o.st.addAnimation(0, then, true, 0); return e.animation.duration; }
+function single(name, x, y, s) { const d = data[name]; const sk = new spine.Skeleton(d); const st = new spine.AnimationState(new spine.AnimationStateData(d)); sk.x = x; sk.y = y; sk.scaleX = sk.scaleY = s; return { sk, st }; }
+
+const app = {
+  loadAssets(c) {
+    const am = c.assetManager;
+    for (const n of ALL) am.loadJson('assets/sugar_' + n + '.json');
+    for (const n of ['logo', 'frame', 'background']) { am.loadJson('assets/sugar_' + n + '.json'); am.loadTextureAtlas('assets/sugar_' + n + '.atlas'); }
+    am.loadTextureAtlas('assets/symbols.atlas');
+  },
+  initialize(c) {
+    R = c.renderer; const am = c.assetManager;
+    const load = (n, atlas) => { const j = new spine.SkeletonJson(new spine.AtlasAttachmentLoader(am.require('assets/' + atlas + '.atlas'))); data[n] = j.readSkeletonData(am.require('assets/' + n + '.json')); };
+    for (const n of ALL) load('sugar_' + n, 'symbols');
+    for (const n of ['logo', 'frame', 'background']) load('sugar_' + n, 'sugar_' + n);
+    bg = single('sugar_background', W / 2, H / 2, 0.5); bg.st.setAnimation(0, 'idle', true);
+    frame = single('sugar_frame', W / 2, FRAME_CY, FRAME_SCALE); frame.st.setAnimation(0, 'idle', true);
+    logo = single('sugar_logo', 262, H - 250, 0.5); logo.st.setAnimation(0, 'in', false); logo.st.addAnimation(0, 'idle', true, 0);
+    for (let c2 = 0; c2 < N; c2++) grid.push(new Array(N).fill(null));
+    $('msg').style.display = 'none'; window.__demo = { grid, spin, state: () => busy };
+    fill(true).then(resolve);
+  },
+  update(c, dt) {
+    dt = Math.min(dt, 1 / 20) * turbo;
+    for (let i = timers.length - 1; i >= 0; i--) { const tm = timers[i]; tm.t -= dt; if (tm.t <= 0) { timers.splice(i, 1); tm.f(); } }
+    for (const o of [bg, frame, logo]) { o.st.update(dt); o.st.apply(o.sk); o.sk.update(dt); o.sk.updateWorldTransform(spine.Physics.update); }
+    const step = o => {
+      if (o.falling) {
+        o.vy += 5200 * dt; o.y -= o.vy * dt;
+        if (o.y <= o.ty) { o.y = o.ty; o.falling = false; o.vy = 0; if (o.landAnim) play(o, 'land', false, 'idle'); if (o.onLand) { const f = o.onLand; o.onLand = null; f(); } }
+      }
+      o.sk.x = o.x; o.sk.y = o.y - CELL * .02; o.st.update(dt); o.st.apply(o.sk); o.sk.update(dt); o.sk.updateWorldTransform(spine.Physics.update);
+    };
+    for (const col of grid) for (const o of col) if (o) step(o);
+    for (const o of dying) step(o);
+  },
+  render(c) {
+    const gl = c.gl, cam = R.camera; R.resize(spine.ResizeMode.Expand);
+    cam.position.x = W / 2; cam.position.y = H / 2; cam.viewportWidth = W; cam.viewportHeight = H; cam.zoom = 1; cam.update();   // whole 1920 x 1080 world in the 16:9 canvas
+    c.clear(.16, .09, .31, 1);
+    R.begin();
+    R.drawSkeleton(bg.sk, true);
+    const bx = GX - 14, by = H - GTOP - N * CELL - 14, bw = N * CELL + 28, bh = N * CELL + 28;
+    R.rect(true, bx, by, bw, bh, new spine.Color(.42, .27, .86, .82));
+    for (let cc = 0; cc < N; cc++) for (let r = 0; r < N; r++) R.rect(true, cellX(cc) - CELL / 2 + 5, cellY(r) - CELL / 2 + 5, CELL - 10, CELL - 10, new spine.Color(.55, .40, .95, .28));
+    R.end();
+    // symbols: clipped to the board while they fall in from above
+    const sx = canvas.width / W, sy = canvas.height / H;
+    gl.enable(gl.SCISSOR_TEST); gl.scissor(0, 0, canvas.width, Math.round((H - GTOP + 70) * sy));
+    R.begin();
+    const list = []; for (const col of grid) for (const o of col) if (o) list.push(o); for (const o of dying) list.push(o);
+    list.sort((a, b) => a.front - b.front || b.y - a.y);
+    for (const o of list) R.drawSkeleton(o.sk, true);
+    R.end(); gl.disable(gl.SCISSOR_TEST);
+    R.begin(); R.drawSkeleton(frame.sk, true); R.drawSkeleton(logo.sk, true); R.end();
+  },
+  error(c, errs) { $('msg').style.display = 'grid'; $('msg').textContent = 'Nie udało się wczytać plików: ' + Object.keys(errs).join(', '); }
+};
+
+// ---------------------------------------------------------------- board logic
+function drop(o, c, r, fromRow, delay) {
+  return new Promise(res => { o.x = cellX(c); o.ty = cellY(r); o.y = cellY(fromRow); o.landAnim = true; o.onLand = res; later(() => { o.falling = true; }, delay * 1); });
+}
+async function fill(first) {
+  const ps = [];
+  for (let c = 0; c < N; c++) {
+    // gravity: rows grow downwards (row 0 = top); pack survivors to the bottom
+    const col = grid[c].filter(o => o); const missing = N - col.length;
+    for (let i = 0; i < col.length; i++) { const r = N - col.length + i, o = col[i]; if (Math.abs(o.ty - cellY(r)) > 1 || first) { o.ty = cellY(r); o.landAnim = true; ps.push(new Promise(res => { o.onLand = res; later(() => { o.falling = true; }, (c * 35) * 1); })); } }
+    const fresh = [];
+    for (let i = 0; i < missing; i++) {
+      let name = pick();
+      if (first && (missing - 1 - i) >= 4 + Math.abs(c - 3) * 0 && Math.random() < .0) name = 'blocker';
+      const o = make(name); play(o, 'idle', true); o.st.getCurrent(0).trackTime = Math.random() * 3; fresh.push(o);
+    }
+    grid[c] = fresh.concat(col);
+    for (let i = 0; i < missing; i++) ps.push(drop(fresh[i], c, i, i - missing - 1.2, c * 45 + (missing - 1 - i) * 55));
+  }
+  await Promise.all(ps); await sleep(160 * 1);
+}
+function blockersStart() {            // like the mockup: X blockers in the lower corners
+  for (let c = 0; c < N; c++) for (let r = 0; r < N; r++) {
+    const depth = r - 4, edge = Math.min(c, N - 1 - c);
+    if ((depth >= 0 && edge <= depth) || (r === 0 && (c === 0 || c === 3 || c === 6))) { const o = make('blocker'); play(o, 'idle', true); grid[c][r] = o; o.x = cellX(c); o.y = o.ty = cellY(r); }
+  }
+}
+function clusters() {
+  const seen = new Set(), out = [], key = (c, r) => c * 10 + r, nm = (c, r) => grid[c][r] && grid[c][r].name;
+  for (const target of PAY) {
+    const vis = new Set();
+    for (let c = 0; c < N; c++) for (let r = 0; r < N; r++) {
+      if (nm(c, r) !== target || vis.has(key(c, r))) continue;
+      const q = [[c, r]], cells = []; vis.add(key(c, r));
+      while (q.length) { const [a, b] = q.pop(); cells.push([a, b]); for (const [da, db] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const x = a + da, y = b + db; if (x < 0 || y < 0 || x >= N || y >= N || vis.has(key(x, y))) continue; const n = nm(x, y); if (n === target || n === 'wild') { vis.add(key(x, y)); q.push([x, y]); } } }
+      for (const [a, b] of cells) if (nm(a, b) === 'wild') vis.delete(key(a, b));        // a wild may serve another cluster of this symbol too
+      if (cells.filter(([a, b]) => nm(a, b) === target).length >= 1 && cells.length >= MIN_CLUSTER) out.push({ target, cells });
+    }
+  }
+  return out;
+}
+function showWin(v, total) { const w = $('win'); w.textContent = (total ? 'TOTAL WIN ' : 'WIN ') + '$' + v.toFixed(2); w.style.opacity = 1; }
+async function removeCells(cells, anim) {
+  let longest = 0;
+  for (const [c, r] of cells) { const o = grid[c][r]; if (!o) continue; grid[c][r] = null; o.front = 2; const a = o.name === 'bomb' ? 'explode' : anim; longest = Math.max(longest, play(o, a, false)); dying.push(o); }
+  await sleep(longest * 1000 * 1); dying.length = 0;
+}
+async function resolve() {
+  let total = 0, mult = 0;
+  for (;;) {
+    const cl = clusters();
+    if (cl.length) {
+      const cells = new Map(); let win = 0;
+      for (const k of cl) { win += VALUE[k.target] * (k.cells.length - MIN_CLUSTER + 1) * (1 + .25 * (k.cells.length - MIN_CLUSTER)); for (const [c, r] of k.cells) cells.set(c * 10 + r, [c, r]); }
+      mult++; total += win;
+      for (const [c, r] of cells.values()) { const o = grid[c][r]; o.front = 1; play(o, 'win', true); }
+      if (cells.size >= 8 || mult >= 2) { frame.st.setAnimation(0, 'win', false); frame.st.addAnimation(0, 'idle', true, 0); logo.st.setAnimation(0, 'win', false); logo.st.addAnimation(0, 'idle', true, 0); }
+      showWin(total, false); await sleep(1000 * 1);
+      // blockers next to a winning cluster break as well
+      const kill = new Map(cells);
+      for (const [c, r] of cells.values()) for (const [da, db] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const x = c + da, y = r + db; if (x >= 0 && y >= 0 && x < N && y < N && grid[x][y] && grid[x][y].name === 'blocker') kill.set(x * 10 + y, [x, y]); }
+      await removeCells([...kill.values()], 'destroy'); await fill(false); continue;
+    }
+    // no cluster: a bomb on the board goes off and clears its 3 x 3 neighbourhood
+    let bomb = null; for (let c = 0; c < N && !bomb; c++) for (let r = 0; r < N; r++) if (grid[c][r] && grid[c][r].name === 'bomb') { bomb = [c, r]; break; }
+    if (bomb) {
+      const [bc, br] = bomb, b = grid[bc][br]; grid[bc][br] = null; b.front = 3; dying.push(b); const d = play(b, 'explode', false);
+      await sleep(620 * 1);                                                             // the blast itself starts ~0.65 s in
+      const cells = []; for (let c = bc - 1; c <= bc + 1; c++) for (let r = br - 1; r <= br + 1; r++) if (c >= 0 && r >= 0 && c < N && r < N && grid[c][r]) cells.push([c, r]);
+      frame.st.setAnimation(0, 'win', false); frame.st.addAnimation(0, 'idle', true, 0);
+      const keep = dying.slice(); for (const [c, r] of cells) { const o = grid[c][r]; grid[c][r] = null; o.front = 2; play(o, o.name === 'bomb' ? 'explode' : 'destroy', false); keep.push(o); }
+      dying = keep; await sleep(Math.max(d * 1000 - 620, 720) * 1); dying = [];
+      await fill(false); continue;
+    }
+    break;
+  }
+  if (total > 0) { balance += total; showWin(total, true); }
+  $('balv').textContent = '$' + balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  busy = false; $('spin').disabled = false;
+}
+async function spin() {
+  if (busy) return; busy = true; $('spin').disabled = true; $('win').style.opacity = 0; balance -= 1;
+  $('balv').textContent = '$' + balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // the old board drops out through the bottom
+  const out = []; for (let c = 0; c < N; c++) { for (let r = 0; r < N; r++) { const o = grid[c][r]; if (!o) continue; grid[c][r] = null; o.ty = -400; o.landAnim = false; o.onLand = null; out.push(o); later(() => { o.falling = true; }, (c * 40 + (N - 1 - r) * 12) * 1); } }
+  dying = out; await sleep(620 * 1); dying = [];
+  newSet(); if (Math.random() < .55) blockersStart();
+  await fill(true); await resolve();
+}
+
+canvas = $('c');
+$('spin').addEventListener('click', spin);
+window.addEventListener('keydown', e => { if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); spin(); } });
+if (typeof spine === 'undefined') $('msg').textContent = 'Nie udało się wczytać odtwarzacza Spine.';
+else new spine.SpineCanvas(canvas, { app, webglConfig: { alpha: false, premultipliedAlpha: true, antialias: true } });
+}
+</script>
+</body>
+</html>
