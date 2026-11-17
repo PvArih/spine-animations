@@ -1,0 +1,16 @@
+packa.png
+size:4096,512
+filter:Linear,Linear
+pma:true
+packa_cross
+bounds:433,3,340,340
+packa_disc
+bounds:779,3,254,254
+packa_fx_ring
+bounds:1385,3,128,128
+packa_glow
+bounds:3,3,424,424
+packa_sw_shadow
+bounds:1217,3,162,168
+packa_swatter
+bounds:1039,3,172,188

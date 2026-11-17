@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roached – zbiornik z gazem i packa</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #14101c; color: #efeaf7; font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+  header { width: 100%; max-width: 1400px; padding: 12px 16px 8px; display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; }
+  h1 { font-size: 16px; margin: 0 8px 0 0; letter-spacing: .02em; }
+  .grp { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .grp b { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; opacity: .6; margin-right: 2px; }
+  button, label.tg { font: inherit; font-weight: 600; color: inherit; background: #2a2238; border: 1px solid #453a5c; border-radius: 8px; padding: 7px 12px; cursor: pointer; }
+  button:hover { background: #362c49; }
+  button:focus-visible { outline: 2px solid #9dff4a; outline-offset: 2px; }
+  button.hot { background: #3d7a12; border-color: #63b324; }
+  label.tg { display: inline-flex; gap: 6px; align-items: center; }
+  .gamesw { display: flex; gap: 6px; margin-left: auto; }
+  .gamesw a { padding: 7px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,.14); color: inherit; text-decoration: none; font-size: 12px; font-weight: 700; opacity: .75; }
+  .gamesw a.on { background: rgba(255,255,255,.14); opacity: 1; }
+  .stage { position: relative; width: min(100vw, 1400px, calc((100vh - 110px) * 1400 / 790)); aspect-ratio: 1400 / 790; background: #000 url(assets/bg.jpg) center / cover no-repeat; overflow: hidden; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #msg { position: absolute; left: 12px; bottom: 10px; font-size: 12px; opacity: .8; text-shadow: 0 1px 2px #000; }
+  #st { font-variant-numeric: tabular-nums; opacity: .8; min-width: 9ch; }
+  @media (prefers-reduced-motion: reduce) { .stage::after { content: ""; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Roached – nowe animacje</h1>
+  <div class="grp"><b>Zbiornik</b>
+    <button id="scat" class="hot">Scatter +1</button>
+    <button id="full">Pełny (dym)</button>
+    <button id="reset">Reset</button>
+    <span id="st">poziom 0/10</span>
+  </div>
+  <div class="grp"><b>Packa</b>
+    <button id="pin">in</button>
+    <button id="pland">land</button>
+    <button id="pout">out</button>
+  </div>
+  <label class="tg"><input type="checkbox" id="auto" checked> auto</label>
+  <div class="gamesw"><a href="../.././">Farmerka</a><a href="../../sugar/">Candy slot</a><a href="../../sugar/demo/">Candy demo</a><a href="../../roached/">Roached</a><a href="../../roached/demo/" class="on">Roached demo</a></div>
+</header>
+<div class="stage"><canvas id="c"></canvas><div id="msg"></div></div>
+<script src="spine-player.min.js"></script>
+<script>
+{
+const W = 1400, H = 790, $ = id => document.getElementById(id);
+const TANK = { x: 254, y: H - 545, s: 0.163 }, PACKA = { x: 701.5, y: H - 380, s: 0.135 };
+let R, tank, packa, level = 0, isFull = false, packaOn = false, autoT = 0, packaT = 0;
+function make(c, n, p) {
+  const am = c.assetManager, j = new spine.SkeletonJson(new spine.AtlasAttachmentLoader(am.require('assets/' + n + '.atlas.txt')));
+  const d = j.readSkeletonData(am.require('assets/' + n + '.json')), sk = new spine.Skeleton(d), sd = new spine.AnimationStateData(d); sd.defaultMix = 0.12;
+  const st = new spine.AnimationState(sd); sk.x = p.x; sk.y = p.y; sk.scaleX = sk.scaleY = p.s; return { sk, st };
+}
+function label() { $('st').textContent = isFull ? 'PEŁNY' : 'poziom ' + level + '/10'; }
+function addLevel() {
+  if (isFull) return;
+  if (level >= 10) return goFull();
+  level++; tank.st.setAnimation(1, 'level_' + level, false); label();
+}
+function goFull() {
+  if (isFull) return; isFull = true; level = 10;
+  tank.st.setEmptyAnimation(1, 0.15);                 // the level track lets go, 'full' drives the bar itself
+  tank.st.setAnimation(0, 'full_in', false); tank.st.addAnimation(0, 'full', true, 0); label();
+}
+function reset() {
+  isFull = false; level = 0; tank.st.setAnimation(0, 'idle', true); tank.st.setAnimation(1, 'level_0', false); label();
+}
+function pIn(a) { packaOn = true; packa.st.setAnimation(0, a, false); packa.st.addAnimation(0, 'idle', true, 0); }
+function pOut() { if (!packaOn) return; packaOn = false; packa.st.setAnimation(0, 'out', false); }
+const app = {
+  loadAssets(c) { for (const n of ['tank', 'packa']) { c.assetManager.loadJson('assets/' + n + '.json'); c.assetManager.loadTextureAtlas('assets/' + n + '.atlas.txt'); } },
+  initialize(c) {
+    R = c.renderer; tank = make(c, 'tank', TANK); packa = make(c, 'packa', PACKA);
+    tank.st.setAnimation(0, 'idle', true); tank.st.setAnimation(1, 'level_0', false); pIn('in'); label();
+    window.__demo = { tank, packa, addLevel, goFull, reset, pIn, pOut, state: () => ({ level, isFull, packaOn }) };
+  },
+  update(c, dt) {
+    dt = Math.min(dt, 0.1);
+    if ($('auto').checked) {
+      autoT += dt; packaT += dt;
+      if (!isFull && autoT > 1.5) { autoT = 0; addLevel(); }
+      else if (isFull && autoT > 6) { autoT = 0; reset(); }
+      if (packaOn && packaT > 4.5) { packaT = 0; pOut(); }
+      else if (!packaOn && packaT > 1.2) { packaT = 0; pIn('in'); }
+    }
+    for (const o of [tank, packa]) { o.st.update(dt); o.st.apply(o.sk); o.sk.update(dt); o.sk.updateWorldTransform(spine.Physics.update); }
+  },
+  render(c) {
+    const gl = c.gl, cam = R.camera; R.resize(spine.ResizeMode.Expand);
+    cam.position.set(W / 2, H / 2, 0); cam.viewportWidth = W; cam.viewportHeight = H; cam.zoom = 1; cam.update();
+    gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+    R.begin();
+    R.rect(true, PACKA.x - 50, PACKA.y - 50, 100, 100, new spine.Color(.235, .37, .62, 1));   // hides the symbol under the packa cell
+    R.drawSkeleton(packa.sk, true); R.drawSkeleton(tank.sk, true);
+    R.end();
+  }
+};
+$('scat').onclick = () => { autoT = 0; addLevel(); };
+$('full').onclick = () => { autoT = 0; goFull(); };
+$('reset').onclick = () => { autoT = 0; reset(); };
+$('pin').onclick = () => { packaT = 0; pIn('in'); };
+$('pland').onclick = () => { packaT = 0; pIn('land'); };
+$('pout').onclick = () => { packaT = 0; pOut(); };
+if (typeof spine === 'undefined') $('msg').textContent = 'Nie udało się wczytać odtwarzacza Spine.';
+else new spine.SpineCanvas($('c'), { app, webglConfig: { alpha: true, premultipliedAlpha: true, antialias: true } });
+}
+</script>
+</body>
+</html>
