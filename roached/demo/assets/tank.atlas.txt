@@ -17,7 +17,7 @@ bounds:3150,3,64,65
 tank_fs
 bounds:2571,3,171,166
 tank_fx_bubble
-bounds:3429,3,32,32
+bounds:3475,3,32,32
 tank_fx_glow
 bounds:2748,3,128,128
 tank_gas_glow
@@ -34,12 +34,12 @@ tank_lamp
 bounds:3291,3,40,40
 tank_lamp_green
 bounds:3337,3,40,40
-tank_lamp_red
+tank_lamp_orange
 bounds:3383,3,40,40
+tank_lamp_red
+bounds:3429,3,40,40
 tank_liquid_bg
 bounds:342,3,263,566
-tank_pip
-bounds:3467,3,20,18
 tank_puff_a
 bounds:2882,3,128,128
 tank_puff_b

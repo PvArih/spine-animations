@@ -31,10 +31,10 @@
 <header>
   <h1>Roached – nowe animacje</h1>
   <div class="grp"><b>Zbiornik</b>
-    <button id="scat" class="hot">Scatter +1</button>
-    <button id="full">Pełny (dym)</button>
-    <button id="reset">Reset</button>
-    <span id="st">poziom 0/10</span>
+    <button id="bidle">idle</button>
+    <button id="balm">prawie full</button>
+    <button id="bfull" class="hot">full</button>
+    <span id="st">idle</span>
   </div>
   <div class="grp"><b>Packa</b>
     <button id="pin">in</button>
@@ -50,41 +50,28 @@
 {
 const W = 1400, H = 790, $ = id => document.getElementById(id);
 const TANK = { x: 254, y: H - 545, s: 0.163 }, PACKA = { x: 701.5, y: H - 380, s: 0.135 };
-let R, tank, packa, level = 0, isFull = false, packaOn = false, autoT = 0, packaT = 0;
+let R, tank, packa, packaOn = false, autoT = 0, packaT = 0;
 function make(c, n, p) {
   const am = c.assetManager, j = new spine.SkeletonJson(new spine.AtlasAttachmentLoader(am.require('assets/' + n + '.atlas.txt')));
-  const d = j.readSkeletonData(am.require('assets/' + n + '.json')), sk = new spine.Skeleton(d), sd = new spine.AnimationStateData(d); sd.defaultMix = 0.12;
+  const d = j.readSkeletonData(am.require('assets/' + n + '.json')), sk = new spine.Skeleton(d), sd = new spine.AnimationStateData(d); sd.defaultMix = 0.25;
   const st = new spine.AnimationState(sd); sk.x = p.x; sk.y = p.y; sk.scaleX = sk.scaleY = p.s; return { sk, st };
 }
-function label() { $('st').textContent = isFull ? 'PEŁNY' : 'poziom ' + level + '/10'; }
-function addLevel() {
-  if (isFull) return;
-  if (level >= 10) return goFull();
-  level++; tank.st.setAnimation(1, 'level_' + level, false); label();
-}
-function goFull() {
-  if (isFull) return; isFull = true; level = 10;
-  tank.st.setEmptyAnimation(1, 0.15);                 // the level track lets go, 'full' drives the bar itself
-  tank.st.setAnimation(0, 'full_in', false); tank.st.addAnimation(0, 'full', true, 0); label();
-}
-function reset() {
-  isFull = false; level = 0; tank.st.setAnimation(0, 'idle', true); tank.st.setAnimation(1, 'level_0', false); label();
-}
+const NAMES = { idle: 'idle', almost_full: 'prawie full', full: 'full' }; let cur = 'idle';
+function setTank(n) { cur = n; tank.st.setAnimation(0, n, true); $('st').textContent = NAMES[n]; }
 function pIn(a) { packaOn = true; packa.st.setAnimation(0, a, false); packa.st.addAnimation(0, 'idle', true, 0); }
 function pOut() { if (!packaOn) return; packaOn = false; packa.st.setAnimation(0, 'out', false); }
 const app = {
   loadAssets(c) { for (const n of ['tank', 'packa']) { c.assetManager.loadJson('assets/' + n + '.json'); c.assetManager.loadTextureAtlas('assets/' + n + '.atlas.txt'); } },
   initialize(c) {
     R = c.renderer; tank = make(c, 'tank', TANK); packa = make(c, 'packa', PACKA);
-    tank.st.setAnimation(0, 'idle', true); tank.st.setAnimation(1, 'level_0', false); pIn('in'); label();
-    window.__demo = { tank, packa, addLevel, goFull, reset, pIn, pOut, state: () => ({ level, isFull, packaOn }) };
+    setTank('idle'); pIn('in');
+    window.__demo = { tank, packa, setTank, pIn, pOut, state: () => ({ cur, packaOn }) };
   },
   update(c, dt) {
     dt = Math.min(dt, 0.1);
     if ($('auto').checked) {
       autoT += dt; packaT += dt;
-      if (!isFull && autoT > 1.5) { autoT = 0; addLevel(); }
-      else if (isFull && autoT > 6) { autoT = 0; reset(); }
+      if (autoT > (cur === 'idle' ? 4 : 6)) { autoT = 0; setTank(cur === 'idle' ? 'almost_full' : cur === 'almost_full' ? 'full' : 'idle'); }
       if (packaOn && packaT > 4.5) { packaT = 0; pOut(); }
       else if (!packaOn && packaT > 1.2) { packaT = 0; pIn('in'); }
     }
@@ -100,9 +87,9 @@ const app = {
     R.end();
   }
 };
-$('scat').onclick = () => { autoT = 0; addLevel(); };
-$('full').onclick = () => { autoT = 0; goFull(); };
-$('reset').onclick = () => { autoT = 0; reset(); };
+$('bidle').onclick = () => { autoT = 0; setTank('idle'); };
+$('balm').onclick = () => { autoT = 0; setTank('almost_full'); };
+$('bfull').onclick = () => { autoT = 0; setTank('full'); };
 $('pin').onclick = () => { packaT = 0; pIn('in'); };
 $('pland').onclick = () => { packaT = 0; pIn('land'); };
 $('pout').onclick = () => { packaT = 0; pOut(); };
