@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Jarl – edytor cięcia</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;700&family=Barlow:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* VOICE: narzędzie animatora – rzeczowe, ciemne, szybkie
+   IDEA: stół montażowy: oryginał pod folią, każda warstwa to kolorowa folia
+   PICTURE: sam Jarl na dużym płótnie, panel narzędzi z boku
+   COLOUR/TYPE: grafit + złoto topora; Barlow Semi Condensed / Barlow
+   LAYOUT: panel 300px + płótno na resztę ekranu */
+:root{color-scheme:dark;--bg:#121318;--panel:#1b1d24;--line:#2c2f3a;--ink:#e9e6df;--mute:#9a9aa6;--gold:#e8b14a}
+*{box-sizing:border-box;min-width:0}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:14px/1.4 Barlow,system-ui,sans-serif;overflow:hidden}
+#app{display:grid;grid-template-columns:310px minmax(0,1fr);height:100vh}
+aside{background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;padding:14px 14px 30px}
+h1{font:700 22px/1.1 'Barlow Semi Condensed',sans-serif;margin:0 0 2px;letter-spacing:.2px}
+.sub{color:var(--mute);font-size:13px;margin:0 0 12px}
+h2{font:700 15px 'Barlow Semi Condensed',sans-serif;margin:16px 0 7px;color:var(--gold)}
+.seg{display:flex;background:#111217;border:1px solid var(--line);border-radius:9px;padding:3px;gap:3px}
+.seg button{flex:1}
+button{font:600 13px Barlow,sans-serif;color:var(--ink);background:#262934;border:1px solid #333744;border-radius:7px;padding:7px 8px;cursor:pointer;min-height:34px}
+button:hover{background:#2f3341}button.on{background:var(--gold);color:#1a1405;border-color:var(--gold)}
+button:disabled{opacity:.35;cursor:default}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+.tools{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
+.row{display:flex;align-items:center;gap:8px;margin:7px 0}
+.row label{flex:0 0 105px;color:var(--mute)}
+.row input[type=range]{flex:1;accent-color:var(--gold)}
+.row output{width:36px;text-align:right;font-variant-numeric:tabular-nums}
+select{flex:1;background:#262934;color:var(--ink);border:1px solid #333744;border-radius:7px;padding:6px;font:14px Barlow}
+.chk{display:flex;align-items:center;gap:8px;margin:5px 0;color:var(--ink);cursor:pointer}
+.chk input{accent-color:var(--gold);width:16px;height:16px}
+#layers{display:flex;flex-direction:column;gap:3px}
+.ly{display:grid;grid-template-columns:22px 18px minmax(0,1fr) 30px;align-items:center;gap:7px;padding:5px 6px;border-radius:7px;border:1px solid transparent;cursor:pointer}
+.ly:hover{background:#23262f}.ly.act{background:#2a2d38;border-color:var(--gold)}
+.ly .n{font-size:11px;color:var(--mute);text-align:right}
+.ly .sw{width:18px;height:18px;border-radius:4px}
+.ly .eye{min-height:26px;padding:0;background:none;border:0;color:var(--mute);font-size:15px}
+.ly .eye.off{opacity:.3}
+.note{font-size:12.5px;color:var(--mute);margin:6px 0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+main{position:relative;overflow:hidden;background:#0d0e12}
+canvas#view{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+#status{position:absolute;left:10px;bottom:10px;background:#000a;padding:5px 10px;border-radius:7px;font-size:13px;pointer-events:none;font-variant-numeric:tabular-nums}
+#toast{position:absolute;left:50%;top:14px;transform:translateX(-50%);background:var(--gold);color:#1a1405;font-weight:600;padding:8px 14px;border-radius:8px;opacity:0;transition:opacity .25s;pointer-events:none}
+#legend{position:absolute;right:10px;top:10px;background:#000b;padding:8px 12px;border-radius:8px;font-size:13px;display:none;max-width:290px}
+#legend i{display:inline-block;width:14px;height:14px;border-radius:3px;vertical-align:-2px;margin-right:6px}
+#load{position:absolute;inset:0;display:grid;place-items:center;font:600 18px 'Barlow Semi Condensed';color:var(--mute)}
+details{margin-top:14px;color:var(--mute);font-size:12.5px}details summary{cursor:pointer;color:var(--ink)}
+button.on kbd{background:#0002;color:inherit}
+kbd{background:#2a2d38;border-radius:4px;padding:0 5px;font:12px Barlow}
+@media(max-width:700px){#app{grid-template-columns:1fr;grid-template-rows:minmax(0,55vh) minmax(0,1fr)}aside{order:2;border-right:0;border-top:1px solid var(--line)}main{order:1}}
+</style>
+</head>
+<body>
+<div id="app">
+<aside>
+  <h1>Jarl · cięcie na warstwy</h1>
+  <p class="sub">Popraw, co należy do której warstwy, i wyślij mi wynik.</p>
+
+  <h2>Co malujesz</h2>
+  <div class="seg" id="modeSeg">
+    <button data-mode="vis" class="on" title="Tab">Widoczne części</button>
+    <button data-mode="ext" title="Tab">Pod spodem</button>
+  </div>
+  <p class="note" id="modeNote"></p>
+
+  <h2>Narzędzie</h2>
+  <div class="tools" id="tools">
+    <button data-tool="brush" class="on">Pędzel <kbd>B</kbd></button>
+    <button data-tool="lasso">Lasso <kbd>L</kbd></button>
+    <button data-tool="wand">Różdżka <kbd>W</kbd></button>
+    <button data-tool="pick">Pipeta <kbd>I</kbd></button>
+    <button data-tool="eraser">Gumka <kbd>E</kbd></button>
+    <button id="undo" title="Ctrl+Z">Cofnij</button>
+  </div>
+  <div class="row"><label for="size">Rozmiar pędzla</label><input id="size" type="range" min="2" max="200" value="30"><output id="sizeO">30</output></div>
+  <div class="row"><label for="tol">Czułość koloru</label><input id="tol" type="range" min="0" max="200" value="0"><output id="tolO">wył.</output></div>
+  <div class="row"><label for="only">Maluj tylko po</label><select id="only"></select></div>
+
+  <h2>Warstwy <span class="note">(góra = z przodu)</span></h2>
+  <div id="layers"></div>
+
+  <h2>Widok</h2>
+  <div class="row"><label for="op">Krycie kolorów</label><input id="op" type="range" min="0" max="90" value="45"><output id="opO">45</output></div>
+  <label class="chk"><input type="checkbox" id="outline" checked> Kontury między warstwami</label>
+  <label class="chk"><input type="checkbox" id="solo"> Przyciemnij pozostałe warstwy</label>
+  <label class="chk"><input type="checkbox" id="allExt"> Paski „pod spodem” wszystkich warstw</label>
+
+  <h2>Test ruchu <kbd>T</kbd></h2>
+  <div class="grid2">
+    <button id="testBtn">▶ Włącz test</button>
+    <button id="freeze" disabled>Zatrzymaj</button>
+  </div>
+  <div class="row"><label for="amp">Siła ruchu</label><input id="amp" type="range" min="0" max="300" value="100"><output id="ampO">1.0×</output></div>
+  <p class="note">Czerwone = dziura, nic tam nie ma. Paski = część, którą domaluję. Kółka to osie obrotu – możesz je przeciągać.</p>
+
+  <h2>Wynik</h2>
+  <div class="grid2">
+    <button id="send">Wyślij do Claude'a</button>
+    <button id="dl">Pobierz PNG</button>
+    <button id="openBtn">Wczytaj PNG</button>
+    <button id="reset">Przywróć moje cięcie</button>
+  </div>
+  <input type="file" id="file" accept="image/png" hidden>
+  <p class="note" id="saveNote">Praca zapisuje się sama w tej przeglądarce.</p>
+
+  <details>
+    <summary>Skróty i jak to działa</summary>
+    <p><b>Widoczne części</b> – pędzel przypisuje piksele oryginału do aktywnej warstwy. To, co zabierzesz warstwie z tyłu, automatycznie staje się u niej „pod spodem”.</p>
+    <p><b>Pod spodem</b> – zaznaczasz, jak daleko warstwa ma sięgać pod warstwami z przodu (np. rękaw pod futrem). Tam ją domaluję. Gumka albo <kbd>Alt</kbd> zmniejsza ten obszar.</p>
+    <p><b>Czułość koloru</b> – pędzel i różdżka łapią tylko kolor podobny do miejsca kliknięcia (dobre na włosy i futro). Różdżka przy „wył.” używa czułości 40.</p>
+    <p><kbd>Kółko</kbd> zoom · <kbd>Spacja</kbd>/prawy przycisk przesuwanie · <kbd>[</kbd> <kbd>]</kbd> rozmiar · <kbd>1</kbd>–<kbd>0</kbd> warstwa · <kbd>Tab</kbd> tryb · <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Shift+Z</kbd> · <kbd>H</kbd> pokaż/ukryj kolory · <kbd>F</kbd> dopasuj</p>
+  </details>
+</aside>
+<main id="stage">
+  <canvas id="view"></canvas>
+  <div id="legend"><div><i style="background:#ff003c"></i>dziura – nic tu nie ma</div><div><i style="background:repeating-linear-gradient(45deg,#ddd 0 3px,#777 3px 6px)"></i>domaluję pod spodem</div></div>
+  <div id="status">Ładowanie…</div>
+  <div id="toast"></div>
+  <div id="load">Wczytuję Jarla…</div>
+</main>
+</div>
+<script>
+{
+const W = 1948, H = 3376, N = W * H;
+const L = [null,
+  {n: 'Cień pod stopami', c: [150, 150, 170], g: null},
+  {n: 'Peleryna', c: [70, 215, 90], g: 'cape'},
+  {n: 'Futro z tyłu (lewe)', c: [0, 205, 205], g: 'furback'},
+  {n: 'Nogi', c: [235, 70, 70], g: null},
+  {n: 'Tułów + ręce', c: [80, 125, 255], g: null},
+  {n: 'Topór na ramieniu', c: [255, 150, 0], g: 'hand_r'},
+  {n: 'Kołnierz z futra', c: [255, 225, 0], g: 'fur'},
+  {n: 'Głowa, włosy, broda', c: [255, 80, 220], g: 'head'},
+  {n: 'Dłoń na toporze', c: [255, 110, 70], g: 'hand_r'},
+  {n: 'Dłoń + topór przy biodrze', c: [170, 95, 255], g: 'hand_l'}];
+const PIV = {cape: {x: 800, y: 1450, d: 2.2, ph: 0, n: 'peleryna'}, furback: {x: 250, y: 950, d: 4, ph: .7, n: 'futro tył'},
+  fur: {x: 1050, y: 640, d: 2.5, ph: 1.3, n: 'kołnierz'}, head: {x: 1110, y: 830, d: 3.5, ph: 2.1, n: 'głowa'},
+  hand_r: {x: 1640, y: 760, d: 2, ph: 2.9, n: 'topór/dłoń'}, hand_l: {x: 450, y: 1690, d: 3, ph: 3.7, n: 'topór dolny'}};
+const S = {mode: 'vis', tool: 'brush', size: 30, tol: 0, only: 0, active: 5, op: .45, outline: true, solo: false, allExt: false,
+  hidden: new Uint8Array(11), test: false, amp: 1, freeze: 0};
+const $ = s => document.querySelector(s);
+const view = $('#view'), vx = view.getContext('2d');
+let lab = new Uint8Array(N), ext = new Uint16Array(N), src = null, img = null, labImg = null;
+const ovC = document.createElement('canvas'); ovC.width = W; ovC.height = H;
+const ovX = ovC.getContext('2d'); let ovD = null;
+let z = .2, tx = 0, ty = 0, dpr = 1, need = true, mouse = {x: -1, y: -1, in: false};
+
+function toast(t) { const e = $('#toast'); e.textContent = t; e.style.opacity = 1; clearTimeout(toast.h); toast.h = setTimeout(() => e.style.opacity = 0, 2200); }
+function loadImg(u) { return new Promise((r, j) => { const i = new Image(); i.onload = () => r(i); i.onerror = j; i.src = u; }); }
+function pixels(i) { const c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d', {willReadFrequently: true}); x.drawImage(i, 0, 0); return x.getImageData(0, 0, W, H).data; }
+function decode(i) {
+  if (i.naturalWidth !== W || i.naturalHeight !== H) throw new Error('zły rozmiar');
+  const d = pixels(i);
+  for (let p = 0, o = 0; p < N; p++, o += 4) { const l = d[o + 2]; if (l > 10) throw new Error('to nie jest plik cięcia'); lab[p] = l; ext[p] = d[o] | (d[o + 1] << 8); }
+}
+
+// ---------- overlay
+function paintOv(x0, y0, x1, y1) {
+  x0 = Math.max(0, x0 - 1 | 0); y0 = Math.max(0, y0 - 1 | 0); x1 = Math.min(W - 1, x1 + 1 | 0); y1 = Math.min(H - 1, y1 + 1 | 0);
+  if (x1 < x0 || y1 < y0) return;
+  const d = ovD.data, op = Math.round(S.op * 255), a = S.active, am = 1 << (a - 1);
+  let vm = 0; for (let i = 1; i <= 10; i++) if (!S.hidden[i]) vm |= 1 << (i - 1);
+  const em = S.allExt ? vm : am;
+  for (let y = y0; y <= y1; y++) {
+    let p = y * W + x0, o = p * 4;
+    for (let x = x0; x <= x1; x++, p++, o += 4) {
+      const l = lab[p]; let r = 0, g = 0, b = 0, al = 0;
+      if (l) {
+        if (S.solo && l !== a) al = 160;
+        else if (!S.hidden[l]) { const c = L[l].c; r = c[0]; g = c[1]; b = c[2]; al = op; }
+        const e = ext[p] & em;
+        if (e && (x + y) % 12 < 4) { const li = (e & am) ? a : 32 - Math.clz32(e); const c = L[li].c; r = c[0]; g = c[1]; b = c[2]; al = 235; }
+        if (S.outline && ((x + 1 < W && lab[p + 1] !== l) || (y + 1 < H && lab[p + W] !== l))) { r = g = b = 255; al = 225; }
+      }
+      d[o] = r; d[o + 1] = g; d[o + 2] = b; d[o + 3] = al;
+    }
+  }
+  ovX.putImageData(ovD, 0, 0, x0, y0, x1 - x0 + 1, y1 - y0 + 1);
+  need = true;
+}
+const paintAll = () => paintOv(0, 0, W - 1, H - 1);
+
+// ---------- view
+function resize() { dpr = window.devicePixelRatio || 1; view.width = view.clientWidth * dpr; view.height = view.clientHeight * dpr; need = true; }
+function fit() { const w = view.clientWidth, h = view.clientHeight; z = Math.min(w / W, h / H) * .95; tx = (w - W * z) / 2; ty = (h - H * z) / 2; need = true; }
+function toImg(e) { const r = view.getBoundingClientRect(); return {x: (e.clientX - r.left - tx) / z, y: (e.clientY - r.top - ty) / z}; }
+let lasso = null, tLayers = null, red = null;
+function angle(P, now) { const s = S.freeze ? S.freeze : Math.sin(now / 1000 * 2 * Math.PI / 2.4 + P.ph); return S.amp * P.d * Math.PI / 180 * s; }
+function draw(now) {
+  vx.setTransform(1, 0, 0, 1, 0, 0); vx.fillStyle = '#0d0e12'; vx.fillRect(0, 0, view.width, view.height);
+  vx.setTransform(dpr * z, 0, 0, dpr * z, dpr * tx, dpr * ty); vx.imageSmoothingEnabled = z < 1.5;
+  if (S.test && tLayers) {
+    vx.drawImage(red, 0, 0, W, H);
+    for (let i = 1; i <= 10; i++) {
+      const g = L[i].g; if (!g) { vx.drawImage(tLayers[i], 0, 0, W, H); continue; }
+      const P = PIV[g], an = angle(P, now);
+      vx.save(); vx.translate(P.x, P.y); vx.rotate(an); vx.translate(-P.x, -P.y); vx.drawImage(tLayers[i], 0, 0, W, H); vx.restore();
+    }
+    vx.lineWidth = 3 / z; vx.font = `${13 / z}px Barlow`;
+    for (const k in PIV) { const P = PIV[k]; vx.beginPath(); vx.arc(P.x, P.y, 9 / z, 0, 7); vx.fillStyle = '#e8b14a'; vx.fill(); vx.strokeStyle = '#000'; vx.stroke(); vx.fillStyle = '#fff'; vx.fillText(P.n, P.x + 13 / z, P.y - 8 / z); }
+  } else if (img) { vx.drawImage(img, 0, 0); vx.drawImage(ovC, 0, 0); }
+  if (lasso && lasso.length > 1) {
+    vx.beginPath(); vx.moveTo(lasso[0].x, lasso[0].y); for (const q of lasso) vx.lineTo(q.x, q.y);
+    vx.lineWidth = 2 / z; vx.strokeStyle = '#fff'; vx.setLineDash([6 / z, 5 / z]); vx.stroke(); vx.setLineDash([]);
+  }
+  if (!S.test && mouse.in && (S.tool === 'brush' || S.tool === 'eraser')) {
+    vx.beginPath(); vx.arc(mouse.x, mouse.y, S.size / 2, 0, 7); vx.lineWidth = 1.5 / z; vx.strokeStyle = '#000'; vx.stroke();
+    vx.beginPath(); vx.arc(mouse.x, mouse.y, S.size / 2 + 1.5 / z, 0, 7); vx.strokeStyle = '#fff'; vx.stroke();
+  }
+}
+function loop(now) { if (need || S.test) { draw(now); need = false; } requestAnimationFrame(loop); }
+
+// ---------- editing
+let gen = 0, stamp = null, cI = [], cL = [], cE = [], bb = null, sample = [0, 0, 0], erase = false, undoS = [], redoS = [];
+function opBegin() { gen++; cI = []; cL = []; cE = []; bb = [1e9, 1e9, -1, -1]; }
+function grow(x0, y0, x1, y1) { bb[0] = Math.min(bb[0], x0); bb[1] = Math.min(bb[1], y0); bb[2] = Math.max(bb[2], x1); bb[3] = Math.max(bb[3], y1); }
+function rec(p) { if (stamp[p] !== gen) { stamp[p] = gen; cI.push(p); cL.push(lab[p]); cE.push(ext[p]); } }
+function cd(p) { const o = p * 4; return Math.abs(src[o] - sample[0]) + Math.abs(src[o + 1] - sample[1]) + Math.abs(src[o + 2] - sample[2]); }
+function setSample(x, y) { const o = ((y | 0) * W + (x | 0)) * 4; sample = [src[o], src[o + 1], src[o + 2]]; }
+function apply(p) {
+  const l = lab[p], a = S.active;
+  if (S.only && l !== S.only) return;
+  if (S.mode === 'vis') {
+    if (l === a || src[p * 4 + 3] === 0) return;
+    if (S.tol && cd(p) > S.tol) return;
+    rec(p);
+    if (l && l < a) ext[p] |= 1 << (l - 1);
+    ext[p] &= ~(1 << (a - 1)); lab[p] = a;
+  } else {
+    const bit = 1 << (a - 1);
+    if (erase) { if (!(ext[p] & bit)) return; rec(p); ext[p] &= ~bit; }
+    else { if (l <= a || (ext[p] & bit)) return; if (S.tol && cd(p) > S.tol) return; rec(p); ext[p] |= bit; }
+  }
+}
+function dab(cx, cy) {
+  const r = S.size / 2, x0 = Math.max(0, Math.floor(cx - r)), x1 = Math.min(W - 1, Math.ceil(cx + r)), y0 = Math.max(0, Math.floor(cy - r)), y1 = Math.min(H - 1, Math.ceil(cy + r)), r2 = r * r;
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const dx = x + .5 - cx, dy = y + .5 - cy; if (dx * dx + dy * dy <= r2) apply(y * W + x); }
+  grow(x0, y0, x1, y1);
+}
+let last = null, pend = null;
+function stroke(p) {
+  const d = Math.hypot(p.x - last.x, p.y - last.y), st = Math.max(1, S.size / 4), n = Math.ceil(d / st);
+  for (let i = 1; i <= n; i++) dab(last.x + (p.x - last.x) * i / n, last.y + (p.y - last.y) * i / n);
+  last = p; flushSoon();
+}
+function flushSoon() { if (pend) return; pend = requestAnimationFrame(() => { pend = null; if (bb && bb[2] >= 0) paintOv(bb[0], bb[1], bb[2], bb[3]); }); }
+function opEnd() {
+  if (!cI.length) return;
+  const n = cI.length, idx = Int32Array.from(cI), ol = Uint8Array.from(cL), oe = Uint16Array.from(cE), nl = new Uint8Array(n), ne = new Uint16Array(n);
+  for (let i = 0; i < n; i++) { nl[i] = lab[idx[i]]; ne[i] = ext[idx[i]]; }
+  undoS.push({idx, ol, oe, nl, ne, bb: bb.slice()}); if (undoS.length > 60) undoS.shift(); redoS = [];
+  paintOv(bb[0], bb[1], bb[2], bb[3]); saveSoon(); updCounts();
+}
+function hist(from, to, old) {
+  const u = from.pop(); if (!u) return;
+  const L_ = old ? u.ol : u.nl, E_ = old ? u.oe : u.ne;
+  for (let i = 0; i < u.idx.length; i++) { lab[u.idx[i]] = L_[i]; ext[u.idx[i]] = E_[i]; }
+  to.push(u); paintOv(...u.bb); saveSoon(); updCounts(); toast(old ? 'Cofnięto' : 'Ponowiono');
+}
+function lassoFill(pts) {
+  let x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1; for (const q of pts) { x0 = Math.min(x0, q.x); y0 = Math.min(y0, q.y); x1 = Math.max(x1, q.x); y1 = Math.max(y1, q.y); }
+  x0 = Math.max(0, Math.floor(x0)); y0 = Math.max(0, Math.floor(y0)); x1 = Math.min(W - 1, Math.ceil(x1)); y1 = Math.min(H - 1, Math.ceil(y1));
+  const w = x1 - x0 + 1, h = y1 - y0 + 1; if (w < 2 || h < 2) return;
+  const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d', {willReadFrequently: true});
+  x.beginPath(); x.moveTo(pts[0].x - x0, pts[0].y - y0); for (const q of pts) x.lineTo(q.x - x0, q.y - y0); x.closePath(); x.fillStyle = '#fff'; x.fill();
+  const d = x.getImageData(0, 0, w, h).data;
+  opBegin();
+  for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) if (d[(yy * w + xx) * 4 + 3] > 127) apply((yy + y0) * W + xx + x0);
+  grow(x0, y0, x1, y1); opEnd();
+}
+let Q = null, vis = null, vg = 0;
+function wand(px, py) {
+  const p0 = py * W + px, t = lab[p0]; if (!t) return;
+  Q = Q || new Int32Array(N); vis = vis || new Uint32Array(N); vg++;
+  setSample(px, py); opBegin(); const tol = S.tol || 40;
+  let h = 0, tl = 0; Q[tl++] = p0; vis[p0] = vg; let x0 = px, x1 = px, y0 = py, y1 = py;
+  while (h < tl) {
+    const p = Q[h++], x = p % W, y = (p - x) / W; const keep = S.tol; S.tol = tol; apply(p); S.tol = keep;
+    if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+    const nb = [x > 0 ? p - 1 : -1, x < W - 1 ? p + 1 : -1, y > 0 ? p - W : -1, y < H - 1 ? p + W : -1];
+    for (const q of nb) if (q >= 0 && vis[q] !== vg && lab[q] === t && cd(q) <= tol) { vis[q] = vg; Q[tl++] = q; }
+  }
+  grow(x0, y0, x1, y1); opEnd();
+}
+
+// ---------- pointer
+let drag = null, space = false;
+view.addEventListener('contextmenu', e => e.preventDefault());
+view.addEventListener('pointerdown', e => {
+  view.setPointerCapture(e.pointerId); const p = toImg(e);
+  if (e.button === 1 || e.button === 2 || space) { drag = {k: 'pan', x: e.clientX, y: e.clientY}; return; }
+  if (S.test) {
+    for (const k in PIV) { const P = PIV[k]; if (Math.hypot(P.x - p.x, P.y - p.y) < 22 / z) { drag = {k: 'piv', P}; return; } }
+    drag = {k: 'pan', x: e.clientX, y: e.clientY}; return;
+  }
+  if (!src) return;
+  erase = S.mode === 'ext' && (S.tool === 'eraser' || e.altKey);
+  if (S.tool === 'brush' || S.tool === 'eraser') {
+    if (S.tool === 'eraser' && S.mode === 'vis') { toast('Gumka działa w trybie „Pod spodem”'); return; }
+    setSample(Math.min(W - 1, Math.max(0, p.x)), Math.min(H - 1, Math.max(0, p.y)));
+    opBegin(); last = p; dab(p.x, p.y); flushSoon(); drag = {k: 'paint'};
+  } else if (S.tool === 'lasso') { lasso = [p]; drag = {k: 'lasso'}; }
+  else if (S.tool === 'wand') { if (p.x >= 0 && p.y >= 0 && p.x < W && p.y < H) wand(p.x | 0, p.y | 0); }
+  else if (S.tool === 'pick') { const l = lab[(p.y | 0) * W + (p.x | 0)]; if (l) { setActive(l); toast('Aktywna: ' + L[l].n); } }
+});
+view.addEventListener('pointermove', e => {
+  const p = toImg(e); mouse = {x: p.x, y: p.y, in: true}; need = true; status(p);
+  if (!drag) return;
+  if (drag.k === 'pan') { tx += e.clientX - drag.x; ty += e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY; }
+  else if (drag.k === 'piv') { drag.P.x = Math.round(p.x); drag.P.y = Math.round(p.y); }
+  else if (drag.k === 'paint') stroke(p);
+  else if (drag.k === 'lasso') lasso.push(p);
+});
+function up() {
+  if (!drag) return;
+  if (drag.k === 'paint') { if (pend) { cancelAnimationFrame(pend); pend = null; } opEnd(); }
+  else if (drag.k === 'lasso') { const pts = lasso; lasso = null; if (pts.length > 2) lassoFill(pts); }
+  drag = null; need = true;
+}
+view.addEventListener('pointerup', up); view.addEventListener('pointercancel', up);
+view.addEventListener('pointerleave', () => { mouse.in = false; need = true; });
+view.addEventListener('wheel', e => {
+  e.preventDefault(); const r = view.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
+  const k = Math.exp(-e.deltaY * (e.ctrlKey ? .01 : .0015)), nz = Math.min(16, Math.max(.05, z * k));
+  tx = mx - (mx - tx) * nz / z; ty = my - (my - ty) * nz / z; z = nz; need = true;
+}, {passive: false});
+function status(p) {
+  const x = p.x | 0, y = p.y | 0; if (x < 0 || y < 0 || x >= W || y >= H || !src) { $('#status').textContent = 'Warstwa: ' + L[S.active].n; return; }
+  const q = y * W + x, l = lab[q], e = ext[q], under = [];
+  for (let i = 1; i <= 10; i++) if (e & (1 << (i - 1))) under.push(L[i].n);
+  $('#status').textContent = `${x}, ${y} · tu: ${l ? L[l].n : 'tło'}${under.length ? ' · pod spodem: ' + under.join(', ') : ''}`;
+}
+
+// ---------- UI
+function setActive(i) { S.active = i; document.querySelectorAll('.ly').forEach(r => r.classList.toggle('act', +r.dataset.i === i)); paintAll(); }
+function counts() { const c = new Array(11).fill(0); for (let p = 0; p < N; p++) c[lab[p]]++; return c; }
+function updCounts() { clearTimeout(updCounts.h); updCounts.h = setTimeout(() => { const c = counts(); document.querySelectorAll('.ly .n').forEach(n => n.textContent = Math.round(c[+n.dataset.i] / 1000) + 'k'); }, 400); }
+function buildLayers() {
+  const rows = []; for (let i = 10; i >= 1; i--) { const c = L[i].c;
+    rows.push(`<div class="ly${i === S.active ? ' act' : ''}" data-i="${i}" title="klawisz ${i % 10}"><button class="eye" data-i="${i}" aria-label="pokaż/ukryj">◉</button><span class="sw" style="background:rgb(${c})"></span><span>${i % 10}. ${L[i].n}</span><span class="n" data-i="${i}"></span></div>`); }
+  $('#layers').innerHTML = rows.join('');
+  $('#only').innerHTML = '<option value="0">wszystkie warstwy</option>' + L.slice(1).map((l, i) => `<option value="${i + 1}">${l.n}</option>`).reverse().join('');
+}
+$('#layers').addEventListener('click', e => {
+  const eye = e.target.closest('.eye');
+  if (eye) { const i = +eye.dataset.i; S.hidden[i] ^= 1; eye.classList.toggle('off', !!S.hidden[i]); paintAll(); return; }
+  const r = e.target.closest('.ly'); if (r) setActive(+r.dataset.i);
+});
+function setMode(m) {
+  S.mode = m; document.querySelectorAll('#modeSeg button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
+  $('#modeNote').textContent = m === 'vis' ? 'Przypisujesz widoczne piksele do aktywnej warstwy.' : 'Zaznaczasz, jak daleko aktywna warstwa sięga pod warstwami z przodu – tam domaluję. Gumka / Alt usuwa.';
+  if (m === 'ext' && !S.allExt) paintAll();
+}
+function setTool(t) { S.tool = t; document.querySelectorAll('#tools [data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === t)); view.style.cursor = t === 'brush' || t === 'eraser' ? 'none' : 'crosshair'; need = true; }
+$('#modeSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setMode(b.dataset.mode); });
+$('#tools').addEventListener('click', e => { const b = e.target.closest('[data-tool]'); if (b) setTool(b.dataset.tool); });
+$('#undo').onclick = () => hist(undoS, redoS, true);
+const bindR = (id, f) => { const el = $('#' + id); el.addEventListener('input', () => f(+el.value)); };
+bindR('size', v => { S.size = v; $('#sizeO').textContent = v; need = true; });
+bindR('tol', v => { S.tol = v; $('#tolO').textContent = v ? v : 'wył.'; });
+bindR('op', v => { S.op = v / 100; $('#opO').textContent = v; paintAll(); });
+bindR('amp', v => { S.amp = v / 100; $('#ampO').textContent = (v / 100).toFixed(1) + '×'; });
+$('#only').onchange = e => S.only = +e.target.value;
+for (const k of ['outline', 'solo', 'allExt']) $('#' + k).onchange = e => { S[k] = e.target.checked; paintAll(); };
+
+function buildTest() {
+  const w = W >> 1, h = H >> 1; tLayers = [null]; const D = [null];
+  for (let i = 1; i <= 10; i++) { const c = document.createElement('canvas'); c.width = w; c.height = h; tLayers.push(c); D.push(c.getContext('2d').createImageData(w, h)); }
+  red = document.createElement('canvas'); red.width = w; red.height = h; const rx = red.getContext('2d'), RD = rx.createImageData(w, h);
+  // a pixel needs something behind it only near a layer that sits further back (not where the figure meets the background)
+  const m = new Uint8Array(w * h), t = new Uint8Array(w * h), R = 12;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const l = lab[(y * 2) * W + x * 2]; m[y * w + x] = l > 1 ? l : 99; }
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let v = 99; for (let k = Math.max(0, x - R), e = Math.min(w - 1, x + R); k <= e; k++) if (m[y * w + k] < v) v = m[y * w + k]; t[y * w + x] = v; }
+  for (let x = 0; x < w; x++) for (let y = 0; y < h; y++) { let v = 99; for (let k = Math.max(0, y - R), e = Math.min(h - 1, y + R); k <= e; k++) if (t[k * w + x] < v) v = t[k * w + x]; m[y * w + x] = v; }
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const p = (y * 2) * W + x * 2, o = (y * w + x) * 4, l = lab[p], e = ext[p];
+    if ((l > 1 && m[y * w + x] < l) || e) { RD.data[o] = 255; RD.data[o + 1] = 0; RD.data[o + 2] = 60; RD.data[o + 3] = 255; }
+    if (l) { const d = D[l].data, s = p * 4; d[o] = src[s]; d[o + 1] = src[s + 1]; d[o + 2] = src[s + 2]; d[o + 3] = src[s + 3]; }
+    if (e) for (let i = 1; i <= 10; i++) if (e & (1 << (i - 1))) { const d = D[i].data, c = L[i].c, k = (x + y) % 6 < 3 ? 1 : .5; d[o] = c[0] * k; d[o + 1] = c[1] * k; d[o + 2] = c[2] * k; d[o + 3] = 255; }
+  }
+  for (let i = 1; i <= 10; i++) tLayers[i].getContext('2d').putImageData(D[i], 0, 0);
+  rx.putImageData(RD, 0, 0);
+}
+function setTest(on) {
+  S.test = on; if (on) buildTest(); else { tLayers = null; red = null; }
+  $('#testBtn').textContent = on ? '■ Wyłącz test' : '▶ Włącz test'; $('#testBtn').classList.toggle('on', on);
+  $('#freeze').disabled = !on; S.freeze = 0; $('#freeze').textContent = 'Zatrzymaj';
+  $('#legend').style.display = on ? 'block' : 'none'; need = true;
+}
+$('#testBtn').onclick = () => setTest(!S.test);
+$('#freeze').onclick = () => { S.freeze = S.freeze === 0 ? 1 : S.freeze === 1 ? -1 : 0; $('#freeze').textContent = S.freeze === 1 ? 'Wychylenie →' : S.freeze === -1 ? '← Wychylenie' : 'Zatrzymaj'; };
+
+window.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' && e.target.type !== 'range' && e.target.type !== 'checkbox' || e.target.tagName === 'SELECT') return;
+  const k = e.key.toLowerCase();
+  if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); e.shiftKey ? hist(redoS, undoS, false) : hist(undoS, redoS, true); return; }
+  if ((e.ctrlKey || e.metaKey) && k === 'y') { e.preventDefault(); hist(redoS, undoS, false); return; }
+  if (e.ctrlKey || e.metaKey) return;
+  if (k === ' ') { space = true; e.preventDefault(); view.style.cursor = 'grab'; }
+  else if (k === 'tab') { e.preventDefault(); setMode(S.mode === 'vis' ? 'ext' : 'vis'); }
+  else if (k === 'b') setTool('brush'); else if (k === 'l') setTool('lasso'); else if (k === 'w') setTool('wand'); else if (k === 'i') setTool('pick'); else if (k === 'e') setTool('eraser');
+  else if (k === '[' || k === ']') { const v = Math.max(2, Math.min(200, Math.round(S.size * (k === '[' ? .8 : 1.25)))); $('#size').value = v; S.size = v; $('#sizeO').textContent = v; need = true; }
+  else if (/^[0-9]$/.test(k)) setActive(k === '0' ? 10 : +k);
+  else if (k === 't') setTest(!S.test);
+  else if (k === 'f') fit();
+  else if (k === 'h') { const v = S.op > 0 ? 0 : 45; $('#op').value = v; S.op = v / 100; $('#opO').textContent = v; paintAll(); }
+});
+window.addEventListener('keyup', e => { if (e.key === ' ') { space = false; setTool(S.tool); } });
+
+// ---------- save / export
+function idb() { return new Promise((r, j) => { const q = indexedDB.open('jarl-ciecie', 1); q.onupgradeneeded = () => q.result.createObjectStore('s'); q.onsuccess = () => r(q.result); q.onerror = () => j(q.error); }); }
+async function idbGet() { try { const db = await idb(); return await new Promise(r => { const q = db.transaction('s').objectStore('s').get('cur'); q.onsuccess = () => r(q.result); q.onerror = () => r(null); }); } catch (e) { return null; } }
+async function idbPut(v) { try { const db = await idb(); db.transaction('s', 'readwrite').objectStore('s').put(v, 'cur'); return true; } catch (e) { return false; } }
+function saveSoon() { clearTimeout(saveSoon.h); saveSoon.h = setTimeout(async () => { const ok = await idbPut({lab, ext, t: Date.now()}); $('#saveNote').textContent = ok ? 'Zapisano w tej przeglądarce · ' + new Date().toLocaleTimeString('pl-PL') : 'Ta przeglądarka nie zapisuje pracy – pobierz PNG przed zamknięciem.'; }, 1200); }
+function encode() {
+  const c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d'), d = x.createImageData(W, H), a = d.data;
+  for (let p = 0, o = 0; p < N; p++, o += 4) { a[o] = ext[p] & 255; a[o + 1] = ext[p] >> 8; a[o + 2] = lab[p]; a[o + 3] = 255; }
+  x.putImageData(d, 0, 0); return new Promise(r => c.toBlob(r, 'image/png'));
+}
+let dl = null, db = null;
+async function caps() { try { if (window.claude && window.claude.use) { dl = await window.claude.use('downloads'); db = await window.claude.use('db'); } } catch (e) {} if (!db) $('#send').style.display = 'none'; }
+$('#dl').onclick = async () => {
+  const b = await encode();
+  if (dl) { try { await dl.save({filename: 'Jarl_ciecie.png', data: b}); toast('Zapisano Jarl_ciecie.png'); } catch (e) { toast('Pobieranie przerwane'); } return; }
+  const u = URL.createObjectURL(b), a = document.createElement('a'); a.href = u; a.download = 'Jarl_ciecie.png'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000);
+  toast('Pobrano Jarl_ciecie.png – wyślij mi ten plik');
+};
+$('#send').onclick = async () => {
+  if (!db) return; $('#send').disabled = true;
+  try {
+    const b = await encode(), s = await new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result.split(',')[1]); f.readAsDataURL(b); });
+    const CH = 200000, n = Math.ceil(s.length / CH), id = Date.now().toString(36);
+    for (let i = 0; i < n; i++) await db.doc(`cuts/${id}_${i}`).set({part: i, data: s.slice(i * CH, (i + 1) * CH)});
+    await db.doc('latest/cut').set({id, parts: n, t: new Date().toISOString()});
+    toast('Wysłane – napisz mi w czacie, że gotowe');
+  } catch (e) { toast('Nie udało się wysłać – użyj „Pobierz PNG”'); }
+  $('#send').disabled = false;
+};
+$('#openBtn').onclick = () => $('#file').click();
+$('#file').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return; const u = URL.createObjectURL(f);
+  try { const i = await loadImg(u); const ol = lab.slice(), oe = ext.slice(); try { decode(i); } catch (er) { lab = ol; ext = oe; throw er; } undoS = []; redoS = []; paintAll(); saveSoon(); updCounts(); toast('Wczytano plik cięcia'); }
+  catch (er) { toast('Nie wczytano: ' + er.message); }
+  URL.revokeObjectURL(u); e.target.value = '';
+};
+$('#reset').onclick = () => { if ($('#reset').dataset.sure !== '1') { $('#reset').dataset.sure = '1'; $('#reset').textContent = 'Na pewno? Kliknij znowu'; setTimeout(() => { $('#reset').dataset.sure = ''; $('#reset').textContent = 'Przywróć moje cięcie'; }, 3000); return; }
+  decode(labImg); undoS = []; redoS = []; paintAll(); saveSoon(); updCounts(); $('#reset').dataset.sure = ''; $('#reset').textContent = 'Przywróć moje cięcie'; toast('Przywrócono cięcie Claude\'a'); };
+
+// ---------- start
+buildLayers(); setMode('vis'); setTool('brush');
+new ResizeObserver(() => { resize(); if (!fit.done) { fit(); fit.done = 1; } }).observe(view);
+requestAnimationFrame(loop);
+(async () => {
+  try {
+    [img, labImg] = await Promise.all([loadImg('jarl.webp'), loadImg('labels.png')]);
+    src = pixels(img); stamp = new Uint32Array(N); ovD = ovX.createImageData(W, H);
+    decode(labImg);
+    const sv = await idbGet();
+    if (sv && sv.lab && sv.lab.length === N) { lab = sv.lab; ext = sv.ext; toast('Wczytano Twoją zapisaną pracę'); }
+    paintAll(); updCounts(); $('#load').remove(); $('#status').textContent = 'Gotowe – maluj po postaci';
+  } catch (e) { $('#load').textContent = 'Nie udało się wczytać obrazka.'; }
+  caps();
+})();
+}
+</script>
+</body>
+</html>
