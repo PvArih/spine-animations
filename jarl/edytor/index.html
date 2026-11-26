@@ -416,8 +416,8 @@ window.addEventListener('keyup', e => { if (e.key === ' ') { space = false; setT
 
 // ---------- save / export
 function idb() { return new Promise((r, j) => { const q = indexedDB.open('jarl-ciecie', 1); q.onupgradeneeded = () => q.result.createObjectStore('s'); q.onsuccess = () => r(q.result); q.onerror = () => j(q.error); }); }
-async function idbGet() { try { const db = await idb(); return await new Promise(r => { const q = db.transaction('s').objectStore('s').get('cut-v3'); q.onsuccess = () => r(q.result); q.onerror = () => r(null); }); } catch (e) { return null; } }
-async function idbPut(v) { try { const db = await idb(); db.transaction('s', 'readwrite').objectStore('s').put(v, 'cut-v3'); return true; } catch (e) { return false; } }
+async function idbGet() { try { const db = await idb(); return await new Promise(r => { const q = db.transaction('s').objectStore('s').get('cut-v31'); q.onsuccess = () => r(q.result); q.onerror = () => r(null); }); } catch (e) { return null; } }
+async function idbPut(v) { try { const db = await idb(); db.transaction('s', 'readwrite').objectStore('s').put(v, 'cut-v31'); return true; } catch (e) { return false; } }
 function saveSoon() { clearTimeout(saveSoon.h); saveSoon.h = setTimeout(async () => { const ok = await idbPut({lab, ext, t: Date.now()}); $('#saveNote').textContent = ok ? 'Zapisano w tej przeglądarce · ' + new Date().toLocaleTimeString('pl-PL') : 'Ta przeglądarka nie zapisuje pracy – pobierz PNG przed zamknięciem.'; }, 1200); }
 function encode() {
   const c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d'), d = x.createImageData(W, H), a = d.data;
